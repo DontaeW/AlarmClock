@@ -1,0 +1,390 @@
+#define F_CPU 8000000UL
+#include <util/delay.h>
+#include <avr/interrupt.h>
+
+#define LCD_switch_direction DDRD
+#define LCD_switch PORTD
+#define LCD_hrs 0x86
+#define LCD_mins 0x89
+#define LCD_secs 0x8c
+#define lcdData_Dir DDRB
+#define lcdCommand_Dir DDRB
+#define lcdData_Port PORTB
+#define lcdCommand_Port PORTB
+#define RS PORTB1
+#define RW PORTB2
+#define EN PORTB0
+
+
+
+
+#define F_CPU 8000000UL
+
+unsigned char format_set=0;
+unsigned char clock_mode=0;
+int refresh_Rate=0;
+int refresh_Rate_stop=0;
+unsigned char hrs = 12;
+unsigned char mins = 58;
+unsigned char secs = 58;
+char alarm_hrs;
+char alarm_mins;
+char alarm_secs;
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void lcdCommand(unsigned char cmnd)
+{
+	lcdData_Port = (lcdData_Port & 0x0F) | (cmnd & 0xF0);
+	lcdCommand_Port &= (~(1<<RS));
+	lcdCommand_Port &=(~(1<<RW));
+	lcdCommand_Port |= (1<<EN);
+	_delay_ms(1);
+	lcdCommand_Port &=(~(1<<EN));
+	_delay_ms(3);
+	
+	lcdData_Port = (lcdData_Port & 0x0F) | (cmnd << 4);
+	lcdCommand_Port &= (~(1<<RS));
+	lcdCommand_Port &=(~(1<<RW));
+	lcdCommand_Port |= (1<<EN);
+	_delay_us(1);
+	lcdCommand_Port &=(~(1<<EN));
+	_delay_ms(3);
+}
+
+void lcd_Print (char *str)
+{
+	int i=0;
+	while (str[ i] !=0)
+	{
+		lcdData (str[ i] ) ;
+		i++ ;
+	}
+}
+
+void LCD_Init (void)
+{
+	lcdCommand_Dir |= 0x0F;
+	lcdData_Dir |= 0xF0;
+	
+	LCD_switch_direction |=0x00;
+	
+
+	_delay_ms(20);
+	
+	lcdCommand (0x02);
+	lcdCommand (0x28);
+	lcdCommand (0x0C);
+	lcdCommand (0x06);
+	lcdCommand (0x01);
+	lcdCommand (0x80);
+	
+	
+}
+void lcdData (unsigned char char_data)
+{
+	lcdData_Port = (lcdData_Port & 0x0F) | (char_data & 0xF0);
+	lcdCommand_Port |= (1<<RS);
+	lcdCommand_Port &= ~(1<<RW);
+	lcdCommand_Port |= (1<<EN);
+	_delay_us(1);
+	lcdCommand_Port &= ~(1<<EN);
+	_delay_ms(1);
+	
+	lcdData_Port = (lcdData_Port & 0x0F) | (char_data << 4);
+	lcdCommand_Port |= (1<<RS);
+	lcdCommand_Port &= ~(1<<RW);
+	lcdCommand_Port |= (1<<EN);
+	_delay_us(1);
+	lcdCommand_Port &= ~(1<<EN);
+	_delay_ms(1);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+
+
+
+
+void Timer_24hr(void){
+	
+	
+	if (hrs == 24) {
+		hrs = 0;
+	}
+	
+	lcdCommand(0x86);
+	lcdData('0' + hrs / 10);
+	lcdData('0' + hrs % 10);
+	lcdCommand(0x8E);
+	lcd_Print("  ");
+}
+
+
+void clock_hrs(void){
+	if (clock_mode==0)
+	{
+		Timer_12hr();
+	}else if (clock_mode==1)
+	{
+		Timer_24hr();
+	}
+	
+}
+
+void Time12Hr(int hours, int minutes) {
+	lcdCommand(0x86);
+
+	if (hours == 0) {
+		lcdData('1');
+		lcdData('2');
+		} else {
+			
+				int displayHours = (hours > 12) ? hours - 12 : hours;
+				lcdData('0' + displayHours / 10);
+				lcdData('0' + displayHours % 10);
+	
+		}
+	lcdCommand(0x88);
+	lcdData(':');
+	lcdData('0' + minutes / 10);
+	lcdData('0' + minutes % 10);
+
+	if (hours < 12) {
+		lcdCommand(0x8E);
+		lcd_Print("am");
+		} else {
+		lcdCommand(0x8E);
+		lcd_Print("pm");
+	}
+}
+
+void Timer_12hr(void) {
+	Time12Hr(hrs, mins);
+
+	if (hrs == 24) {
+		hrs = 0;
+		Time12Hr(hrs, mins);
+	}
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+void clockLCD(void){
+	
+	lcdCommand(0x80);
+	lcd_Print("Time: ");
+	clock_hrs();
+	lcdCommand(0x88);
+	lcdData(':');
+	lcdData('0' + mins / 10);
+	lcdData('0' + mins % 10);
+	lcdData(':');
+	lcdData('0' + secs / 10);
+	lcdData('0' + secs % 10);
+	
+	lcdCommand(0xC0);
+	lcd_Print("Alarm: ");
+	
+	lcdData('0' + alarm_hrs / 10);
+	lcdData('0' + alarm_hrs % 10);
+	lcd_Print(":");
+	lcdData('0' + alarm_mins / 10);
+	lcdData('0' + alarm_mins % 10);
+	lcd_Print(":");
+	lcdData('0' + alarm_secs / 10);
+	lcdData('0' + alarm_secs % 10);
+	
+	
+
+}
+
+void chours(void){
+	if (clock_mode==0)
+	{
+		Timer_12hr();
+	}else if (clock_mode==1)
+	{
+		Timer_24hr();
+	}
+	
+}
+void reset_lcd(void){
+	hrs=0;
+	mins=0;
+	secs=0;
+}
+
+
+void alarm_lcd(void){
+
+	lcdCommand(0x80);
+	lcd_Print("Time: ");
+	clock_hrs();
+	lcdCommand(0x88);
+	lcdData(':');
+	lcdData('0' + mins / 10);
+	lcdData('0' + mins % 10);
+	lcdData(':');
+	lcdData('0' + secs / 10);
+	lcdData('0' + secs % 10);
+
+	lcdCommand(0xC0);
+	lcd_Print("Alarm: ");
+
+	lcdData('0' + alarm_hrs / 10);
+	lcdData('0' + alarm_hrs % 10);
+	lcd_Print(":");
+	lcdData('0' + alarm_mins / 10);
+	lcdData('0' + alarm_mins % 10);
+	lcd_Print(":");
+	lcdData('0' + alarm_secs / 10);
+	lcdData('0' + alarm_secs % 10);
+
+	while ((PIND & (1 << PORTD0)))
+	{
+		if (!(PIND & (1 << PORTD4)))
+		{
+			alarm_secs++;
+			if(alarm_secs == 60)
+			{
+				alarm_secs = 0;
+			}
+		}
+		if (!(PIND & (1 << PORTD5)))
+		{
+			alarm_mins++;
+			if(alarm_mins == 60 )
+			{
+				alarm_mins = 0;
+			}
+		}
+		if (!(PIND & (1 << PORTD6)))
+		{
+			alarm_hrs++;
+			if(alarm_hrs == 24)
+			{
+				alarm_hrs = 0;
+			}
+		}
+	}
+}
+
+
+void stop_LCD (void){
+	TCCR1B = 0;
+}
+
+void startLCD (void){
+
+	TCCR1B = (1<<CS12|1<<CS10|1<<WGM12);
+
+	OCR1A = 7811;
+	
+	TIMSK = (1<<OCIE1A);
+
+}
+
+ 
+
+
+
+
+
+
+
+int main(void)
+{
+	LCD_Init();
+	startLCD();
+	
+	LCD_switch|=0xFF;
+	
+	PORTD |=(1<<PORTD3);
+	PORTD |=(1<<PORTD4);
+	
+
+	sei();
+	MCUCR |= (1 << ISC11 | 1 << ISC01);
+	GIMSK |= (1 << INT0 | 1 << INT1);
+	
+	while (1)
+	{
+		clockLCD();
+		if (PIND & (1 << PORTD3)){
+			alarm_lcd();
+		}
+		
+		if(alarm_hrs==hrs && alarm_mins==mins){
+			PORTB|=(1<<PORTB3);
+			_delay_ms(1000);
+			PORTB&=(~(1<<PORTB3));
+		}
+		
+		if (PIND & (1 << PORTD3)){
+			alarm_lcd();
+		}
+
+		
+		
+	}
+	return 0;
+}
+
+
+ISR(INT0_vect){
+	stop_LCD();
+
+	while ((PIND & (1 << PORTD0)))
+	{
+		if (!(PIND & (1 << PORTD4)))
+		{
+			secs++;
+			if(secs == 60)
+			{
+				secs = 0;
+			}
+		}
+		if (!(PIND & (1 << PORTD5)))
+		{
+			mins++;
+			if(mins == 60 )
+			{
+				mins = 0;
+			}
+		}
+		if (!(PIND & (1 << PORTD6)))
+		{
+			hrs++;
+			if(hrs == 24)
+			{
+				hrs = 0;
+			}
+		}
+	}
+
+	alarm_hrs = hrs;
+	alarm_mins = mins;
+	alarm_secs = secs;
+
+	startLCD();
+}
+
+ISR(INT1_vect){
+	reset_lcd();
+}
+	
+
+
+
+
+
